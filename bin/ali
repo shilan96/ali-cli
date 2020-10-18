@@ -1,0 +1,109 @@
+#! /usr/bin/env node
+const program = require('commander'); //  注册方法
+const vesion = require('../package').version; // 当前版本
+
+const download = require('download-git-repo');
+const handlebars = require('handlebars');
+const inquirer = require('inquirer');
+const fs = require('fs');
+const ora = require('ora'); // loading
+const chalk = require('chalk'); // 样式
+const logSymbols = require('log-symbols'); // 小图标
+
+program
+	.version(vesion)
+
+// demo init aa aa-name
+// demo init bb bb-name
+
+const templates = {
+	'pro-a': {
+		url: 'https://github.com/shilan96/vue-template-demo',
+		downloadUrl: 'https://github.com:shilan96/vue-template-demo#master',
+		description: '--模板 a'
+	},
+	'pro-b': {
+		url: 'bb.git',
+		downloadUrl: '',
+		description: '--模板 b'
+	},
+}
+program
+	.command('init <tempalteName> <projectName>')
+	.description('初始化项目模板')
+	.action((tempalteName, projectName) => {
+		const spinner = ora('正在下载模板').start()
+
+		// 根据模板名下载地址到本地
+		const { downloadUrl } = templates[tempalteName]
+		// console.log(templates[tempalteName])
+
+		// 仓库地址； 下载路径
+		download(downloadUrl, projectName, { clone: true }, (err) => {
+			if (err) {
+				spinner.fail()
+				console.log(logSymbols.error, chalk.red('下载失败', err))
+				return
+			}
+			spinner.succeed()
+
+			// 读取项目下的 package.json 文件，将用户输入的值替换到文件中
+			inquirer
+				.prompt([
+					{
+						type: 'input',
+						name: 'name',
+						message: '请输入项目名称',
+						validate(input) {
+							if (!input) {
+								return '项目名不能为空！'
+							}
+							if (fs.existsSync(input)) {
+								return '当前目录已经存在同名项目，请换一个项目名！'
+							}
+							return true
+						}
+					},
+					{
+						type: 'input',
+						name: 'description',
+						message: '请输入项目描述',
+					},
+					{
+						type: 'input',
+						name: 'version',
+						message: '请输入项目版本号',
+					}
+				])
+				.then(answers => {
+					console.log('answers', answers)
+
+					// 拉取下来的模板的 package.json 文件
+					const packagePath = `${projectName}/package.json`
+
+					// 指定 utf8，读到字符串，不然读到的是二进制数据
+					const packageContent = fs.readFileSync(packagePath, 'utf8');
+					const packageResult = handlebars.compile(packageContent)(answers);
+
+					// 将修改之后的结果替换掉 package.json 文件
+					fs.writeFileSync(packagePath, packageResult)
+					console.log(logSymbols.success, chalk.yellow('初始化模板成功'))
+				})
+		})
+	})
+
+program
+	.command('list')
+	.description('模板列表')
+	.action(() => {
+		for (const key in templates) {
+			console.log(`${key} ${templates[key].description}`)
+		}
+	})
+
+program.parse(process.argv);
+
+if (!program.args.length) {
+	// console.log(chalk.red('syntax error'));
+	program.help();
+}
